@@ -490,9 +490,10 @@ function buildWorkout(t) {
     sec.exercises.forEach(ex => {
       const bc = ex.type==='compound'?'badge-compound':'badge-isolation';
       const bl = ex.type==='compound'?'Compound':'Isolation';
-      const dots = Array.from({length:ex.sets},(_,i) =>
-        `<div class="ex-progress-dot${todayLog[ex.id+'_'+(i+1)]?.done?.' done':''}" id="dot-${ex.id}-${i+1}"></div>`
-      ).join('');
+      const dots = Array.from({length:ex.sets},(_,i) => {
+        const dc = (todayLog[ex.id+'_'+(i+1)] || {}).done ? ' done' : '';
+        return '<div class="ex-progress-dot' + dc + '" id="dot-' + ex.id + '-' + (i+1) + '"></div>';
+      }).join('');
       h += `
         <div class="exercise-card" id="card-${ex.id}">
           <div class="exercise-header" onclick="toggleCard('${ex.id}')">
