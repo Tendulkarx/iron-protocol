@@ -43,6 +43,38 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
 .sync-dot.error~.sync-label{color:var(--accent2)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
 
+.day-chip.swap-selected .day-chip-pill{
+  animation:swapPulse 0.9s infinite;
+  border-color:var(--accent)!important;
+  box-shadow:0 0 0 3px rgba(200,255,0,0.25)!important;
+  transform:scale(1.15)!important;
+}
+.day-chip.swap-target .day-chip-pill{
+  border-style:dashed!important;
+  opacity:0.75;
+}
+@keyframes swapPulse{
+  0%,100%{box-shadow:0 0 0 3px rgba(200,255,0,0.25)}
+  50%{box-shadow:0 0 0 6px rgba(200,255,0,0.08)}
+}
+.swap-hint{
+  text-align:center;font-size:0.65rem;color:var(--accent);
+  letter-spacing:1px;text-transform:uppercase;
+  padding:4px 0 10px;
+  animation:fadeIn 0.25s ease;
+  display:none;
+}
+.swap-hint.show{display:block}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.toast{
+  position:fixed;top:80px;left:50%;transform:translateX(-50%) translateY(-12px);
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:20px;padding:8px 18px;
+  font-size:0.72rem;color:var(--text2);letter-spacing:0.5px;
+  opacity:0;pointer-events:none;z-index:999;
+  transition:opacity 0.25s ease,transform 0.25s ease;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 /* WEEK STRIP */
 .week-strip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:14px}
 .week-strip::-webkit-scrollbar{display:none}
@@ -229,9 +261,11 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
     </div>
   </div>
   <div class="week-strip" id="weekStrip"></div>
+  <div class="swap-hint" id="swapHint">Tap another day to swap ↕</div>
 </div>
 
 <div class="strip-divider"></div>
+<div class="toast" id="toastMsg"></div>
 <div class="content" id="mainContent"></div>
 
 <!-- TIMER -->
@@ -410,6 +444,9 @@ function sendToSheets(params) {
 }
 
 // ── Strip ─────────────────────────────────────────────────
+let swapFromIdx = null;
+let _pressTimer  = null;
+
 function renderStrip() {
   const strip = document.getElementById('weekStrip');
   strip.innerHTML = '';
@@ -420,11 +457,83 @@ function renderStrip() {
     const chip = document.createElement('div');
     chip.className = `day-chip ${tc[t]||'type-r'}${i===activeDay?' active':''}`;
     chip.innerHTML = `<div class="day-chip-label">${d}</div><div class="day-chip-pill">${lb[t]||'—'}</div>`;
-    chip.addEventListener('click', () => setActiveDay(i));
+
+    // Long-press to enter swap mode
+    chip.addEventListener('pointerdown', () => {
+      _pressTimer = setTimeout(() => {
+        _pressTimer = null;
+        enterSwapMode(i);
+      }, 420);
+    });
+    chip.addEventListener('pointerup',     () => clearTimeout(_pressTimer));
+    chip.addEventListener('pointercancel', () => clearTimeout(_pressTimer));
+    chip.addEventListener('pointermove',   () => clearTimeout(_pressTimer));
+
+    // Tap
+    chip.addEventListener('click', () => {
+      if (swapFromIdx !== null && swapFromIdx !== i) {
+        commitSwap(i);
+      } else if (swapFromIdx === i) {
+        cancelSwap();
+      } else {
+        setActiveDay(i);
+      }
+    });
     strip.appendChild(chip);
   });
   const ac = strip.children[activeDay];
   if (ac) setTimeout(() => ac.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'}), 60);
+}
+
+function enterSwapMode(idx) {
+  swapFromIdx = idx;
+  // Haptic if available
+  if (navigator.vibrate) navigator.vibrate(40);
+  // Style chips
+  const chips = document.getElementById('weekStrip').children;
+  Array.from(chips).forEach((c, i) => {
+    c.classList.remove('swap-selected','swap-target');
+    if (i === idx) c.classList.add('swap-selected');
+    else           c.classList.add('swap-target');
+  });
+  document.getElementById('swapHint').classList.add('show');
+}
+
+function cancelSwap() {
+  swapFromIdx = null;
+  const chips = document.getElementById('weekStrip').children;
+  Array.from(chips).forEach(c => c.classList.remove('swap-selected','swap-target'));
+  document.getElementById('swapHint').classList.remove('show');
+}
+
+function commitSwap(toIdx) {
+  const from = swapFromIdx;
+  // Swap schedule entries
+  const tmp      = schedule[from];
+  schedule[from] = schedule[toIdx];
+  schedule[toIdx]= tmp;
+  // Persist
+  lsSet('ip_sched', schedule);
+  sendToSheets({ action:'saveSchedule', data: JSON.stringify(schedule) });
+  // Show toast
+  showToast(`${DAYS[from]} ↔ ${DAYS[toIdx]} swapped`);
+  // Haptic
+  if (navigator.vibrate) navigator.vibrate([20,30,20]);
+  // Reset swap state
+  swapFromIdx = null;
+  document.getElementById('swapHint').classList.remove('show');
+  // If active day was one of the two swapped, update it
+  if (activeDay === from) activeDay = toIdx;
+  else if (activeDay === toIdx) activeDay = from;
+  renderStrip();
+  renderContent();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toastMsg');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
 }
 
 // ── Content ───────────────────────────────────────────────
