@@ -109,8 +109,9 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
 .section-label::after{content:'';flex:1;height:1px;background:var(--border)}
 
 /* EXERCISE CARD */
-.exercise-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:7px;overflow:hidden;transition:border-color 0.3s ease,box-shadow 0.3s ease,transform 0.18s ease;cursor:pointer}
-.exercise-card:active{transform:scale(0.995)}
+.exercise-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:7px;overflow:hidden;transition:border-color 0.3s ease,box-shadow 0.3s ease}
+.exercise-header{cursor:pointer;transition:background 0.18s ease}
+.exercise-header:active{background:var(--surface2)}
 .exercise-card.completed{border-color:rgba(57,217,138,0.3);box-shadow:0 0 14px rgba(57,217,138,0.06)}
 .exercise-header{display:flex;align-items:center;padding:12px 13px;gap:10px;user-select:none}
 .ex-num{font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--text3);width:20px;flex-shrink:0;line-height:1}
@@ -277,10 +278,10 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
 // ════════════════════════════════════════════════════════════
 // ⚙️  CONFIGURATION — paste your Apps Script Web App URL below
 // ════════════════════════════════════════════════════════════
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwgB2DBtRdmPIF-_WOrZ7ZdI8B7MTCWImvS9YTrRRf2dn6cGMuHtEX1q-hmVmFxJRDu8A/exec';
+const WEB_APP_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
 // ════════════════════════════════════════════════════════════
 
-const USING_SHEETS = WEB_APP_URL !== 'https://script.google.com/macros/s/AKfycbwgB2DBtRdmPIF-_WOrZ7ZdI8B7MTCWImvS9YTrRRf2dn6cGMuHtEX1q-hmVmFxJRDu8A/exec';
+const USING_SHEETS = WEB_APP_URL !== 'PASTE_YOUR_WEB_APP_URL_HERE';
 
 // ── Workout data ─────────────────────────────────────────────
 const DAYS     = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -551,8 +552,8 @@ function buildWorkout(t) {
       const bc = ex.type==='compound'?'badge-compound':'badge-isolation';
       const bl = ex.type==='compound'?'Compound':'Isolation';
       h += `
-        <div class="exercise-card" id="card-${ex.id}" onclick="toggleCard('${ex.id}')">
-          <div class="exercise-header">
+        <div class="exercise-card" id="card-${ex.id}">
+          <div class="exercise-header" onclick="toggleCard('${ex.id}')">
             <div class="ex-num">${ex.num}</div>
             <div class="ex-info">
               <div class="ex-name">${ex.name}</div>
@@ -560,7 +561,7 @@ function buildWorkout(t) {
             </div>
             <div class="chevron">▾</div>
           </div>
-          <div class="set-tracker"><div class="set-tracker-inner">
+          <div class="set-tracker" onclick="event.stopPropagation()"><div class="set-tracker-inner">
             <div class="sets-grid">
               <div class="sets-header">Set</div><div class="sets-header">kg</div>
               <div class="sets-header">Reps</div><div class="sets-header">✓</div>
