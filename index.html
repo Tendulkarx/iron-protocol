@@ -85,11 +85,10 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
 .cal-leg-dot{width:8px;height:8px;border-radius:3px}
 
 /* EXERCISE SELECTOR */
-.ex-picker{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px;margin-bottom:12px}
-.ex-picker::-webkit-scrollbar{display:none}
-.ex-pill{flex-shrink:0;padding:6px 13px;border-radius:20px;font-size:0.7rem;font-weight:600;border:1px solid var(--border);background:var(--surface);color:var(--text3);cursor:pointer;transition:all 0.2s;white-space:nowrap}
-.ex-pill.active{border-color:var(--accent);background:var(--accent-dim);color:var(--accent)}
-.ex-pill:active{transform:scale(0.95)}
+.ex-select{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Outfit',sans-serif;font-size:0.85rem;font-weight:600;padding:10px 12px;outline:none;margin-bottom:12px;-webkit-appearance:none;appearance:none;cursor:pointer;transition:border-color 0.2s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.ex-select:focus{border-color:var(--accent)}
+.ex-select option{background:#1a1a1e;color:var(--text);font-weight:500}
+.ex-select optgroup{color:var(--text3);font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px}
 
 /* CHART */
 .chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 12px 10px;position:relative}
@@ -422,9 +421,11 @@ canvas.ip-chart{width:100%!important;display:block}
     <button class="debug-close" onclick="document.getElementById('debugPanel').classList.remove('show')">Close ✕</button>
   </div>
   <div class="debug-url">URL: <span id="dbgUrl"></span></div>
-  <button class="debug-btn" onclick="dbgPing()">▶ Test connection (ping)</button>
+  <button class="debug-btn" onclick="dbgPing()">▶ Ping</button>
   <button class="debug-btn" onclick="dbgGetAll()">▶ Test getAll</button>
-  <button class="debug-btn" onclick="dbgSaveSet()">▶ Test saveSet (dummy row)</button>
+  <button class="debug-btn" onclick="dbgGetLog()">▶ Test getLog (stats data)</button>
+  <button class="debug-btn" onclick="dbgReloadStats()">▶ Force reload stats</button>
+  <button class="debug-btn" onclick="dbgSaveSet()">▶ Test saveSet</button>
   <button class="debug-btn" onclick="dbgClearLog()">Clear log</button>
   <div class="debug-log" id="dbgLog">Tap a test above...
 </div>
@@ -1053,6 +1054,73 @@ window.addEventListener('scroll',()=>{
   document.getElementById('siteHeader').classList.toggle('scrolled',window.scrollY>10);
 },{passive:true});
 
+
+// ── Debug panel ───────────────────────────────────────────
+function openDebug() {
+  const p = document.getElementById('debugPanel');
+  const u = document.getElementById('dbgUrl');
+  if (u) u.textContent = USING_SHEETS ? WEB_APP_URL.slice(0,60)+'…' : '(not configured)';
+  if (p) p.classList.add('show');
+}
+
+function dbgLog(msg) {
+  const el = document.getElementById('dbgLog');
+  if (!el) return;
+  const t = new Date().toTimeString().slice(0,8);
+  el.textContent = '['+t+'] ' + msg + ' | ' + el.textContent;
+}
+
+async function dbgPing() {
+  dbgLog('Pinging…');
+  if (!USING_SHEETS) { dbgLog('ERROR: WEB_APP_URL not set — paste your /exec URL into the file'); return; }
+  try {
+    const r = await sheetsGET({ action:'ping' });
+    dbgLog('OK: ' + JSON.stringify(r));
+  } catch(e) { dbgLog('FAIL: ' + e.message); }
+}
+
+async function dbgGetAll() {
+  dbgLog('Testing getAll…');
+  if (!USING_SHEETS) { dbgLog('ERROR: WEB_APP_URL not set'); return; }
+  try {
+    const r = await sheetsGET({ action:'getAll' });
+    dbgLog('OK: schedule=' + JSON.stringify(r.schedule) + ' weights_keys=' + Object.keys(r.weights||{}).length + ' todayLog_keys=' + Object.keys(r.todayLog||{}).length);
+  } catch(e) { dbgLog('FAIL: ' + e.message); }
+}
+
+async function dbgGetLog() {
+  dbgLog('Testing getLog…');
+  if (!USING_SHEETS) { dbgLog('ERROR: WEB_APP_URL not set'); return; }
+  try {
+    const r = await sheetsGET({ action:'getLog' });
+    dbgLog('OK: rows=' + (r.rows||[]).length + ' first=' + JSON.stringify((r.rows||[])[0]||'(none)'));
+  } catch(e) { dbgLog('FAIL: ' + e.message); }
+}
+
+async function dbgSaveSet() {
+  dbgLog('Testing saveSet…');
+  if (!USING_SHEETS) { dbgLog('ERROR: WEB_APP_URL not set'); return; }
+  try {
+    const r = await sheetsGET({ action:'saveSet', date:today, dayName:'Debug', workoutType:'A', exId:'a1', exercise:'Test', setNum:1, weight:100, reps:10, done:true, note:'debug', machine:'' });
+    dbgLog('OK: ' + JSON.stringify(r));
+  } catch(e) { dbgLog('FAIL: ' + e.message); }
+}
+
+function dbgClearLog() {
+  const el = document.getElementById('dbgLog');
+  if (el) el.textContent = 'Cleared.';
+}
+
+async function dbgReloadStats() {
+  dbgLog('Force reloading stats…');
+  statsLoaded = false;
+  logCache = null;
+  bwCache  = null;
+  await loadStats();
+  dbgLog('Stats reload complete. logCache rows: ' + (logCache||[]).length);
+}
+
+
 // ── Start ─────────────────────────────────────────────────
 
 // ══════════════════════════════════════════════════════════
@@ -1203,6 +1271,16 @@ function renderStats() {
   }
   el.innerHTML = '';
 
+  // Sheets warning if URL not configured
+  if (!USING_SHEETS) {
+    el.innerHTML = `<div style="background:rgba(255,87,51,0.1);border:1px solid rgba(255,87,51,0.3);border-radius:var(--radius);padding:16px;margin-bottom:16px;font-size:0.8rem;line-height:1.6;color:var(--text2)">
+      <div style="font-weight:700;color:var(--accent2);margin-bottom:6px">⚠ Sheets not connected</div>
+      Your Google Sheets URL is not set in the file. Open <code>index.html</code>, find
+      <code>const WEB_APP_URL = 'PASTE_YOUR_WEB_APP_URL_HERE'</code> and replace it with your
+      <code>/exec</code> URL, then re-upload to GitHub.
+    </div>` + el.innerHTML;
+  }
+
   // Summary cards
   el.innerHTML += `<div class="stat-cards">
     <div class="stat-card"><div class="stat-card-val">${summary.sessions}</div><div class="stat-card-lbl">Sessions</div></div>
@@ -1228,21 +1306,25 @@ function renderStats() {
     </div>
   </div>`;
 
-  // Exercise pills for chart
-  const allEx = [];
-  Object.values(WORKOUTS).forEach(w => w.sections.forEach(s => s.exercises.forEach(e => allEx.push(e))));
-  const pills = allEx.map(e => {
-    const has = logCache.some(r => r.done && r.exId === e.id && r.weight > 0);
-    const shortName = e.name.replace(' (machine)','').replace(' (rope)','').replace(' (close-grip)','').replace(' (alternating)','');
-    return `<div class="ex-pill${e.id===selectedExId?' active':''}${!has?' style=\"opacity:0.45\"':''}" onclick="selectEx('${e.id}')">${shortName}</div>`;
-  }).join('');
+  // Exercise grouped <select> for chart
+  const WK_LABELS = { A: 'Day A — Chest & Triceps', B: 'Day B — Back & Biceps', C: 'Day C — Legs' };
+  let selectHtml = '';
+  Object.entries(WORKOUTS).forEach(([wk, data]) => {
+    selectHtml += `<optgroup label="${WK_LABELS[wk] || wk}">`;
+    data.sections.forEach(s => s.exercises.forEach(e => {
+      const has = logCache.some(r => r.done && r.exId === e.id && r.weight > 0);
+      const shortName = e.name.replace(' (machine)','').replace(' (rope)','').replace(' (close-grip)','').replace(' (alternating)','');
+      selectHtml += `<option value="${e.id}"${e.id===selectedExId?' selected':''}>${has?'':'○ '}${shortName}</option>`;
+    }));
+    selectHtml += '</optgroup>';
+  });
 
   el.innerHTML += `<div class="stats-section">
     <div class="stats-section-title">Progress Chart</div>
-    <div class="ex-picker">${pills}</div>
+    <select class="ex-select" id="exSelect" onchange="selectEx(this.value)">${selectHtml}</select>
     <div class="chart-tabs">
       <button class="chart-tab${chartMetric==='weight'?' active':''}" onclick="setChartMetric('weight')">Top Weight</button>
-      <button class="chart-tab${chartMetric==='volume'?' active':''}" onclick="setChartMetric('volume')">Volume</button>
+      <button class="chart-tab${chartMetric==='volume'?' active':''}" onclick="setChartMetric('volume')">Volume (kg&times;reps)</button>
     </div>
     <div class="chart-wrap"><div class="chart-canvas-wrap"><canvas id="progressChart" height="180"></canvas></div></div>
   </div>`;
@@ -1317,9 +1399,8 @@ function calNav(dir) {
 
 function selectEx(exId) {
   selectedExId = exId;
-  document.querySelectorAll('.ex-pill').forEach(p => {
-    p.classList.toggle('active', p.getAttribute('onclick') === `selectEx('${exId}')`);
-  });
+  const sel = document.getElementById('exSelect');
+  if (sel && sel.value !== exId) sel.value = exId;
   renderProgressChart();
 }
 
