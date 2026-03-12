@@ -170,11 +170,11 @@ canvas.ip-chart{width:100%!important;display:block}
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 /* WEEK STRIP */
-.week-strip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:14px}
+.week-strip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:0 16px 14px}
 .week-strip::-webkit-scrollbar{display:none}
 .day-chip{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
 .day-chip-label{font-size:0.58rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text3);transition:color 0.25s ease}
-.day-chip-pill{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border:1.5px solid var(--border);background:var(--surface);color:var(--text3);transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1)}
+.day-chip-pill{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:0.62rem;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;border:1.5px solid var(--border);background:var(--surface);color:var(--text3);transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1)}
 .day-chip:active .day-chip-pill{transform:scale(0.92)!important}
 .day-chip.type-a .day-chip-pill{color:var(--accent);border-color:rgba(200,255,0,0.28);background:var(--accent-dim)}
 .day-chip.type-b .day-chip-pill{color:var(--accent2);border-color:rgba(255,87,51,0.28);background:var(--accent2-dim)}
@@ -493,7 +493,8 @@ const WORKOUTS = {
 // ── State ────────────────────────────────────────────────
 let schedule   = [...DEFAULT_SCHED];
 let weights    = {};   // 'exId_setNum' → {weight, reps}
-let machines   = {};   // 'exId' → machine name string
+let machines      = {};   // 'exId' → machine name string
+let customExNames = {};   // 'exId' → custom exercise name
 let todayLog   = {};   // 'exId_setNum' → {weight,reps,done,note} for today
 let activeDay  = (()=>{ const d=new Date().getDay(); return d===0?6:d-1; })();
 let modalDayIdx = 0;
@@ -536,7 +537,8 @@ async function init() {
   // Always render from local cache first for instant load
   schedule = lsGet('ip_sched', [...DEFAULT_SCHED]);
   weights  = lsGet('ip_weights', {});
-  machines = lsGet('ip_machines', {});
+  machines      = lsGet('ip_machines', {});
+  customExNames = lsGet('ip_ex_names', {});
   todayLog = ssGet('ip_today_' + today, {});
 
   renderStrip();
@@ -577,41 +579,74 @@ function sendToSheets(params) {
     });
 }
 
+// ── Exercise name editing ─────────────────────────────────
+function startEditName(exId) {
+  const span = document.getElementById('exname-' + exId);
+  if (!span) return;
+  const current = span.textContent.trim();
+  const input = document.createElement('input');
+  input.className = 'ex-name-input';
+  input.value     = current;
+  input.onclick   = e => e.stopPropagation();
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+  const save = () => {
+    const val = input.value.trim() || current;
+    customExNames[exId] = val;
+    lsSet('ip_ex_names', customExNames);
+    // Update EX_MAP
+    if (EX_MAP[exId]) EX_MAP[exId].name = val;
+    // Replace input back with span
+    const newSpan = document.createElement('span');
+    newSpan.className = 'ex-name-text';
+    newSpan.id        = 'exname-' + exId;
+    newSpan.textContent = val;
+    input.replaceWith(newSpan);
+    // Persist to Sheets
+    if (USING_SHEETS) {
+      sheetsGET({ action:'saveExName', exId, name: val })
+        .catch(e => console.error('[Iron Protocol] saveExName:', e.message));
+    }
+    showToast('Name saved');
+  };
+  input.addEventListener('blur',  save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = current; input.blur(); }
+  });
+}
+
 // ── Strip ─────────────────────────────────────────────────
 let swapFromIdx = null;
 let _pressTimer  = null;
 
+const WK_ABBR = { A:'CT', B:'BB', C:'LG', R:'—' };
+const WK_TYPE = { A:'type-a', B:'type-b', C:'type-c', R:'type-r' };
+
 function renderStrip() {
   const strip = document.getElementById('weekStrip');
   strip.innerHTML = '';
-  const tc = {A:'type-a',B:'type-b',C:'type-c',R:'type-r'};
-  const lb = {A:'A',B:'B',C:'C',R:'—'};
   DAYS.forEach((d,i) => {
-    const t = schedule[i];
+    const t    = schedule[i] || 'R';
     const chip = document.createElement('div');
-    chip.className = `day-chip ${tc[t]||'type-r'}${i===activeDay?' active':''}`;
-    chip.innerHTML = `<div class="day-chip-label">${d}</div><div class="day-chip-pill">${lb[t]||'—'}</div>`;
+    chip.className = 'day-chip ' + (WK_TYPE[t]||'type-r') + (i===activeDay?' active':'');
+    chip.innerHTML = '<div class="day-chip-label">'+d+'</div>'
+                   + '<div class="day-chip-pill">'+(WK_ABBR[t]||'—')+'</div>';
 
-    // Long-press to enter swap mode
+    // Long-press → swap mode
     chip.addEventListener('pointerdown', () => {
-      _pressTimer = setTimeout(() => {
-        _pressTimer = null;
-        enterSwapMode(i);
-      }, 420);
+      _pressTimer = setTimeout(() => { _pressTimer = null; enterSwapMode(i); }, 420);
     });
     chip.addEventListener('pointerup',     () => clearTimeout(_pressTimer));
     chip.addEventListener('pointercancel', () => clearTimeout(_pressTimer));
     chip.addEventListener('pointermove',   () => clearTimeout(_pressTimer));
 
-    // Tap
+    // Short tap
     chip.addEventListener('click', () => {
-      if (swapFromIdx !== null && swapFromIdx !== i) {
-        commitSwap(i);
-      } else if (swapFromIdx === i) {
-        cancelSwap();
-      } else {
-        setActiveDay(i);
-      }
+      if (swapFromIdx !== null && swapFromIdx !== i) { commitSwap(i); return; }
+      if (swapFromIdx === i) { cancelSwap(); return; }
+      setActiveDay(i);
     });
     strip.appendChild(chip);
   });
@@ -742,7 +777,10 @@ function buildWorkout(t) {
           <div class="exercise-header" onclick="toggleCard('${ex.id}')">
             <div class="ex-num">${ex.num}</div>
             <div class="ex-info">
-              <div class="ex-name">${ex.name}</div>
+              <div class="ex-name">
+                <span class="ex-name-text" id="exname-${ex.id}">${exDisplayName(ex.id, ex.name)}</span>
+                <button class="ex-name-edit-btn" onclick="event.stopPropagation();startEditName('${ex.id}')" title="Edit name">✏</button>
+              </div>
               <div class="ex-meta"><span>${ex.sets} × ${ex.reps}</span><span class="badge ${bc}">${bl}</span></div>
             </div>
             <div class="ex-progress">${dots}</div>
@@ -781,10 +819,14 @@ function buildWorkout(t) {
 
 // ── Exercise lookup (avoids apostrophes in inline handlers) ──
 const EX_MAP = {};
+function exDisplayName(exId, fallback) {
+  return customExNames[exId] || fallback;
+}
+
 function buildExMap(workoutType) {
   const w = WORKOUTS[workoutType]; if (!w) return;
   w.sections.forEach(sec => sec.exercises.forEach(ex => {
-    EX_MAP[ex.id] = { name: ex.name, rest: ex.rest, workoutType };
+    EX_MAP[ex.id] = { name: exDisplayName(ex.id, ex.name), rest: ex.rest, workoutType };
   }));
 }
 
@@ -992,6 +1034,7 @@ function setActiveDay(idx) {
 
 // ── Modal ─────────────────────────────────────────────────
 function openModal(idx) {
+  // Called from Change button on the banner
   modalDayIdx = idx;
   document.getElementById('modalDayName').textContent = DAY_FULL[idx];
   const sm = {A:'sel-a',B:'sel-b',C:'sel-c',R:'sel-r'};
@@ -1186,6 +1229,14 @@ async function loadStats() {
   try {
     const res = await sheetsGET({ action: 'getLog' });
     logCache  = res.rows || [];
+    // Also refresh exercise custom names from Sheets
+    try {
+      const nr = await sheetsGET({ action: 'getExNames' });
+      if (nr.names) {
+        Object.assign(customExNames, nr.names);
+        lsSet('ip_ex_names', customExNames);
+      }
+    } catch(_) {}
     logOk     = true;
   } catch(e) {
     console.error('[Iron Protocol] getLog failed:', e.message);
@@ -1215,9 +1266,13 @@ function setStatsSync(state, msg) {
   lbl.textContent = msg || '';
 }
 
+function isDone(r) {
+  return r.done === true || r.done === 'true' || r.done === 'TRUE' || r.done === 1;
+}
+
 function computeSummary() {
-  const done = logCache.filter(r => r.done);
-  const sessions  = new Set(done.map(r => r.date + r.workout)).size;
+  const done = logCache.filter(r => isDone(r));
+  const sessions  = new Set(done.filter(r => r.weight > 0).map(r => r.date + r.workout)).size;
   const totalVol  = done.reduce((a,r) => a + r.weight * r.reps, 0);
   const days      = new Set(done.map(r => r.date)).size;
   return { sessions, totalVol: Math.round(totalVol), days };
@@ -1225,7 +1280,7 @@ function computeSummary() {
 
 function computePBs() {
   const bests = {};
-  logCache.filter(r => r.done && r.weight > 0).forEach(r => {
+  logCache.filter(r => isDone(r) && r.weight > 0).forEach(r => {
     if (!bests[r.exId] || r.weight > bests[r.exId].weight ||
         (r.weight === bests[r.exId].weight && r.reps > bests[r.exId].reps)) {
       bests[r.exId] = { weight: r.weight, reps: r.reps, date: r.date, name: r.exercise };
@@ -1236,13 +1291,13 @@ function computePBs() {
 
 function getCalendarData() {
   const map = {};
-  logCache.filter(r => r.done).forEach(r => { if (!map[r.date]) map[r.date] = r.workout; });
+  logCache.filter(r => isDone(r)).forEach(r => { if (!map[r.date]) map[r.date] = r.workout; });
   return map;
 }
 
 function getChartData(exId, metric) {
   const byDate = {};
-  logCache.filter(r => r.done && r.exId === exId && r.weight > 0).forEach(r => {
+  logCache.filter(r => isDone(r) && r.exId === exId && r.weight > 0).forEach(r => {
     const vol = r.weight * r.reps;
     if (!byDate[r.date]) {
       byDate[r.date] = { weight: r.weight, volume: vol, reps: r.reps };
